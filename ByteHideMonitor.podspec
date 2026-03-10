@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name                  = "ByteHideMonitor"
-  s.version               = "1.0.2"
+  s.version               = "1.0.3"
   s.summary               = "Runtime Application Self-Protection (RASP) for iOS"
   s.description           = <<-DESC
     ByteHide Monitor provides runtime protection for iOS applications:
@@ -24,11 +24,21 @@ Pod::Spec.new do |s|
   s.swift_version         = "5.0"
 
   s.source = {
-    :http => "https://github.com/bytehide/ByteHideMonitor-iOS/releases/download/v1.0.2/ByteHideMonitor.xcframework.zip",
+    :http => "https://github.com/bytehide/ByteHideMonitor-iOS/releases/download/v1.0.3/ByteHideMonitor.xcframework.zip",
     :type => "zip"
   }
 
   s.vendored_frameworks = "ByteHideMonitor.xcframework"
+
+  s.preserve_paths = [
+    "Scripts/validate-license.sh"
+  ]
+
+  s.script_phase = {
+    :name => "ByteHide Monitor - Validate License",
+    :script => '"${PODS_ROOT}/ByteHideMonitor/Scripts/validate-license.sh"',
+    :execution_position => :before_compile
+  }
 
   s.frameworks = "Foundation", "UIKit", "Security"
   s.requires_arc = true

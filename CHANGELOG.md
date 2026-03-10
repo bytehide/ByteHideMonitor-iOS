@@ -2,7 +2,7 @@
 
 All notable changes to ByteHide Monitor iOS will be documented in this file.
 
-## [1.0.2] - 2026-03-10
+## [1.0.3] - 2026-03-10
 
 ### Added
 - Initial iOS release
