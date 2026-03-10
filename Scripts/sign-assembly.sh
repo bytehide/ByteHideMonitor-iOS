@@ -236,7 +236,7 @@ set +e
 HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" \
     -X POST "$VALIDATE_URL" \
     -H "Content-Type: application/json" \
-    -H "User-Agent: ByteHideMonitor-iOS/1.0.5" \
+    -H "User-Agent: ByteHideMonitor-iOS/1.0.6" \
     --max-time $TIMEOUT \
     --connect-timeout $TIMEOUT \
     --data "$JSON_PAYLOAD" 2>&1)
