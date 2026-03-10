@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name                  = "ByteHideMonitor"
-  s.version               = "1.0.6"
+  s.version               = "1.0.7"
   s.summary               = "Runtime Application Self-Protection (RASP) for iOS"
   s.description           = <<-DESC
     ByteHide Monitor provides runtime protection for iOS applications:
@@ -24,7 +24,7 @@ Pod::Spec.new do |s|
   s.swift_version         = "5.0"
 
   s.source = {
-    :http => "https://github.com/bytehide/ByteHideMonitor-iOS/releases/download/v1.0.6/ByteHideMonitor.xcframework.zip",
+    :http => "https://github.com/bytehide/ByteHideMonitor-iOS/releases/download/v1.0.7/ByteHideMonitor.xcframework.zip",
     :type => "zip"
   }
 

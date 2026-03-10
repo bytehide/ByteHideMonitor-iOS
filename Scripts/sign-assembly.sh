@@ -51,26 +51,28 @@ if [ -z "$BUILT_PRODUCTS_DIR" ]; then
     exit 1
 fi
 
-# In CocoaPods, SRCROOT/PRODUCT_NAME point to the Pods project, not the app.
-# We need to find the actual app project root and app bundle.
+# In CocoaPods, SRCROOT/PRODUCT_NAME/BUILT_PRODUCTS_DIR refer to the pod
+# target, not the app. We need to resolve the real app project and .app bundle.
 if [ -n "$PODS_ROOT" ]; then
-    # CocoaPods context: SRCROOT points to Pods/, not the app project.
-    # Resolve the real path to the app project (parent of Pods/).
+    # App project root is the parent of the Pods/ directory
     APP_PROJECT_ROOT=$(cd "$PODS_ROOT" && cd .. && pwd)
 
-    # Find the actual .app bundle in build products
-    APP_BUNDLE=$(find "$BUILT_PRODUCTS_DIR" -maxdepth 1 -name "*.app" -type d 2>/dev/null | head -1)
+    # Pod's BUILT_PRODUCTS_DIR is a subdirectory (e.g., .../Debug-iphonesimulator/ByteHideMonitor/).
+    # The app's .app bundle lives in the parent directory.
+    APP_BUILD_DIR=$(dirname "$BUILT_PRODUCTS_DIR")
+    APP_BUNDLE=$(find "$APP_BUILD_DIR" -maxdepth 1 -name "*.app" -type d 2>/dev/null | head -1)
 
     if [ -z "$APP_BUNDLE" ]; then
-        # .app not created yet — create directory so we can write monitor.sig
+        # .app not built yet (clean build) — derive name from project directory
         APP_NAME=$(basename "$APP_PROJECT_ROOT")
-        APP_BUNDLE="${BUILT_PRODUCTS_DIR}/${APP_NAME}.app"
+        APP_BUNDLE="${APP_BUILD_DIR}/${APP_NAME}.app"
         mkdir -p "$APP_BUNDLE"
     fi
 else
-    # SPM or manual build phase: standard Xcode context
+    # SPM or manual: SRCROOT and PRODUCT_NAME refer to the app directly
     APP_PROJECT_ROOT="${SRCROOT}"
     APP_BUNDLE="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app"
+    mkdir -p "$APP_BUNDLE"
 fi
 
 INFO_PLIST="${APP_BUNDLE}/Info.plist"
@@ -94,7 +96,7 @@ fi
 
 # Priority 2: monitor-config.json
 if [ -z "$TOKEN" ]; then
-    # Derive the app target name for subdirectory search
+    # In CocoaPods, PRODUCT_NAME is the pod name; derive app name from project root
     if [ -n "$PODS_ROOT" ]; then
         APP_TARGET_NAME=$(basename "$APP_PROJECT_ROOT")
     else
@@ -104,14 +106,8 @@ if [ -z "$TOKEN" ]; then
     CONFIG_PATHS=(
         "${APP_PROJECT_ROOT}/monitor-config.json"
         "${APP_PROJECT_ROOT}/${APP_TARGET_NAME}/monitor-config.json"
+        "${PROJECT_DIR}/monitor-config.json"
     )
-
-    # Also check SRCROOT/PROJECT_DIR for SPM/manual context
-    if [ -z "$PODS_ROOT" ]; then
-        CONFIG_PATHS+=(
-            "${PROJECT_DIR}/monitor-config.json"
-        )
-    fi
 
     for CONFIG_PATH in "${CONFIG_PATHS[@]}"; do
         if [ -f "$CONFIG_PATH" ]; then

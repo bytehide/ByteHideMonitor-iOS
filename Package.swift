@@ -16,8 +16,8 @@ let package = Package(
     targets: [
         .binaryTarget(
             name: "ByteHideMonitor",
-            url: "https://github.com/bytehide/ByteHideMonitor-iOS/releases/download/v1.0.6/ByteHideMonitor.xcframework.zip",
-            checksum: "c042d4a90397660a9c4455b3e7cc0bf48ed09cb94a4251438a04bcfb8d2dc390"
+            url: "https://github.com/bytehide/ByteHideMonitor-iOS/releases/download/v1.0.7/ByteHideMonitor.xcframework.zip",
+            checksum: "bf4d379113dcb480a30453495f3cab89ad22512241ddb7004bd9b9fdbe5660bb"
         )
     ]
 )
