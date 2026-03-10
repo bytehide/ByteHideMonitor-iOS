@@ -16,7 +16,7 @@ Pod::Spec.new do |s|
 
   s.homepage              = "https://www.bytehide.com/products/monitor"
   s.documentation_url     = "https://docs.bytehide.com/monitor/ios"
-  s.license               = { :type => "Commercial", :file => "LICENSE.txt" }
+  s.license               = { :type => "Commercial", :text => "Copyright (c) 2025-2026 ByteHide. All rights reserved." }
   s.author                = { "ByteHide" => "support@bytehide.com" }
 
   s.platform              = :ios, "12.0"
@@ -29,11 +29,6 @@ Pod::Spec.new do |s|
   }
 
   s.vendored_frameworks = "ByteHideMonitor.xcframework"
-
-  s.preserve_paths = [
-    "Scripts/validate-license.sh",
-    "LICENSE.txt"
-  ]
 
   s.frameworks = "Foundation", "UIKit", "Security"
   s.requires_arc = true
