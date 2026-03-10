@@ -49,10 +49,10 @@ BUILD_PHASE_NAME = "ByteHide Monitor - Sign Assembly"
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
-def print_success(msg) = puts "#{GREEN}  ✓ #{msg}#{NC}"
-def print_error(msg)   = puts "#{RED}  ✗ #{msg}#{NC}"
-def print_warning(msg) = puts "#{YELLOW}  ⚠ #{msg}#{NC}"
-def print_info(msg)    = puts "#{BLUE}  ℹ #{msg}#{NC}"
+def print_success(msg) puts "#{GREEN}  ✓ #{msg}#{NC}" end
+def print_error(msg)   puts "#{RED}  ✗ #{msg}#{NC}" end
+def print_warning(msg) puts "#{YELLOW}  ⚠ #{msg}#{NC}" end
+def print_info(msg)    puts "#{BLUE}  ℹ #{msg}#{NC}" end
 
 # ─── Find .xcodeproj ────────────────────────────────────────────────────────
 
