@@ -1,122 +1,97 @@
-# ByteHide Monitor - iOS
+# ByteHide Monitor for iOS
 
-Runtime Application Self-Protection (RASP) for iOS applications.
+**Runtime Application Self-Protection (RASP)** for iOS applications by [ByteHide](https://www.bytehide.com).
 
-## Installation
-
-ByteHide Monitor supports both **CocoaPods** and **Swift Package Manager**.
-
-### CocoaPods (Recommended - Zero Config)
-
-```ruby
-pod 'ByteHideMonitor', '~> 1.0'
-```
-
-Then run:
-```bash
-pod install
-```
-
-**Done!** Build-time validation runs automatically.
-
-### Swift Package Manager (One-Time Setup)
-
-See [README-SPM.md](./README-SPM.md) for detailed instructions.
-
-> **Note:** SPM requires running a one-time setup script due to Apple's architecture limitations.
-
-## Quick Start
-
-ByteHide Monitor **auto-initializes** - no code required!
-
-Just configure your token and build:
-
-### Option 1: Environment Variable
-
-1. Edit Scheme → Run → Environment Variables
-2. Add: `BYTEHIDE_TOKEN` = `your-token-here`
-
-### Option 2: Info.plist
-
-```xml
-<key>ByteHideMonitor</key>
-<dict>
-    <key>APIToken</key>
-    <string>${BYTEHIDE_TOKEN}</string>
-</dict>
-```
-
-### Option 3: JSON Configuration
-
-Create `monitor-config.json`:
-
-```json
-{
-  "apiToken": "${BYTEHIDE_TOKEN}",
-  "protections": [
-    {
-      "type": "DebuggerDetection",
-      "action": "close",
-      "intervalMs": 60000
-    }
-  ]
-}
-```
-
-## Documentation
-
-- **[Integration Guide](./docs/INTEGRATION-GUIDE.md)** - Complete setup guide
-- **[CocoaPods Implementation](./COCOAPODS_IMPLEMENTATION.md)** - Technical details for CocoaPods
-- **[SPM Guide](./README-SPM.md)** - Swift Package Manager setup
-- **[SPM Implementation](./SPM-IMPLEMENTATION.md)** - Technical details for SPM
+ByteHide Monitor protects your iOS app at runtime against reverse engineering, tampering, debugging, and other security threats. It works automatically with zero code changes.
 
 ## Features
 
-- ✅ **Zero-code auto-initialization** - Works via `+load()` before `main()`
-- ✅ **Build-time license validation** - Validates token during compilation
-- ✅ **Runtime protections** - Debugger, jailbreak, clock tampering detection
-- ✅ **Custom actions** - Define your own threat responses
-- ✅ **Cloud configuration** - Remote protection updates
-- ✅ **Offline mode** - Works without network connection
-- ✅ **JSON configuration** - Flexible setup options
-
-## How It Works
-
-### Build Time (Automatic)
-
-1. CocoaPods/SPM build script runs
-2. Reads token from environment/Info.plist/JSON
-3. Validates token with ByteHide API
-4. Downloads JWT signature
-5. Saves `monitor.sig` to app bundle
-
-### Runtime (Automatic)
-
-1. `+load()` executes before `main()`
-2. Reads `monitor.sig` from app bundle
-3. Validates JWT signature
-4. Initializes protection modules
-5. Starts threat detection
-
-**No code required** - everything is automatic!
+- Anti-debugging and anti-tampering protection
+- Jailbreak and simulator detection
+- Memory dump and code injection protection
+- Library injection (DYLD) detection
+- Screen recording and screenshot detection
+- UI overlay detection
+- Network tampering detection (SSL proxies, VPNs)
+- Clock tampering detection
+- Hardware binding and keychain integrity
+- Configurable threat responses (log, close, erase data)
+- Cloud configuration and remote updates
+- Offline protection (no network required at runtime)
 
 ## Requirements
 
 - iOS 12.0+
-- Xcode 13.0+
-- CocoaPods 1.10+ OR Swift Package Manager 5.6+
+- Xcode 14.0+
+- A valid ByteHide license ([get one here](https://www.bytehide.com/products/monitor))
+
+## Installation
+
+### CocoaPods
+
+Add to your `Podfile`:
+
+```ruby
+pod 'ByteHideMonitor'
+```
+
+Then run:
+
+```bash
+pod install
+```
+
+CocoaPods configures everything automatically (build phase, signing script).
+
+### Swift Package Manager
+
+1. In Xcode, go to **File > Add Package Dependencies...**
+2. Enter the repository URL:
+   ```
+   https://github.com/bytehide/ByteHideMonitor-iOS
+   ```
+3. From your project directory, run the setup script:
+   ```bash
+   bash <(curl -sL https://raw.githubusercontent.com/bytehide/ByteHideMonitor-iOS/main/Scripts/setup.sh)
+   ```
+
+The setup script adds the signing build phase, disables script sandboxing, and creates the configuration file.
+
+For detailed steps see [SPM installation guide](./docs/install-spm.md).
+
+## Configuration
+
+Create `monitor-config.json` in your project root:
+
+```json
+{
+  "apiToken": "bh_your_project_key"
+}
+```
+
+Get your project key at [cloud.bytehide.com](https://cloud.bytehide.com/product/monitor/).
+
+Alternatively, set the token via **Info.plist** or **environment variable**. See the [CocoaPods guide](./docs/install-cocoapods.md) for all options.
+
+## How it works
+
+**Build time:** A build phase script validates your license with the ByteHide API and generates a cryptographic signature (`monitor.sig`) that is embedded in the app bundle.
+
+**Runtime:** ByteHide Monitor auto-initializes before `main()` via `+load()`. It reads the signature, validates it offline, and starts the protection modules. No code changes needed.
+
+## Documentation
+
+- [CocoaPods installation](./docs/install-cocoapods.md)
+- [SPM installation](./docs/install-spm.md)
+- [Full integration guide](./docs/INTEGRATION-GUIDE.md)
 
 ## Support
 
-- 📧 Email: support@bytehide.com
-- 💬 Discord: [discord.gg/bytehide](https://discord.gg/bytehide)
-- 📚 Docs: [docs.bytehide.com](https://docs.bytehide.com)
-- 🐛 Issues: [github.com/bytehide/monitor-ios/issues](https://github.com/bytehide/monitor-ios/issues)
+- Email: support@bytehide.com
+- Documentation: [docs.bytehide.com](https://docs.bytehide.com)
 
 ## License
 
-Proprietary - Requires valid ByteHide subscription.
+This software is proprietary and commercially licensed by **ByteHide Solutions S.L.**
 
----
-
-**ByteHide Monitor** - Enterprise-grade RASP for iOS
+Use of ByteHide Monitor requires a valid, paid license. Unauthorized use, copying, modification, or distribution is strictly prohibited. See [LICENSE](./LICENSE.txt) for full terms.

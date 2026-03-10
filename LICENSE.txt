@@ -1,8 +1,57 @@
-Copyright (c) 2025-2026 ByteHide. All rights reserved.
+ByteHide Monitor - Commercial License
 
-This software is proprietary and confidential. Unauthorized copying, distribution,
-modification, or use of this software, via any medium, is strictly prohibited.
+Copyright (c) 2025-2026 ByteHide Solutions S.L. All rights reserved.
 
-This software is provided "AS IS", without warranty of any kind, express or implied.
+IMPORTANT: READ THIS LICENSE AGREEMENT CAREFULLY BEFORE USING THIS SOFTWARE.
 
-For licensing information, visit: https://www.bytehide.com/products/monitor
+1. LICENSE GRANT
+
+   This software and associated documentation ("Software") is licensed, not sold.
+   ByteHide Solutions S.L. ("ByteHide") grants you a limited, non-exclusive,
+   non-transferable license to use the Software solely in connection with a valid,
+   paid ByteHide subscription.
+
+2. RESTRICTIONS
+
+   You may NOT:
+   - Use the Software without a valid ByteHide license
+   - Copy, modify, or distribute the Software
+   - Reverse engineer, decompile, or disassemble the Software
+   - Remove or alter any proprietary notices or labels
+   - Sublicense, rent, lease, or lend the Software
+   - Use the Software in any product or service that competes with ByteHide
+
+3. INTELLECTUAL PROPERTY
+
+   The Software is the intellectual property of ByteHide Solutions S.L. and is
+   protected by copyright laws and international treaties. All rights not expressly
+   granted are reserved by ByteHide.
+
+4. DISCLAIMER OF WARRANTIES
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+5. LIMITATION OF LIABILITY
+
+   IN NO EVENT SHALL BYTEHIDE BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL,
+   CONSEQUENTIAL, OR PUNITIVE DAMAGES ARISING OUT OF OR RELATED TO YOUR USE OF
+   THE SOFTWARE.
+
+6. TERMINATION
+
+   This license terminates automatically if you fail to comply with any of its
+   terms or if your ByteHide subscription expires or is cancelled. Upon
+   termination, you must cease all use of the Software and destroy all copies.
+
+7. GOVERNING LAW
+
+   This agreement shall be governed by and construed in accordance with the laws
+   of Spain. Any disputes arising under this agreement shall be subject to the
+   exclusive jurisdiction of the courts of Spain.
+
+For licensing information and pricing, visit: https://www.bytehide.com/products/monitor
+For support, contact: support@bytehide.com
+
+ByteHide Solutions S.L.
