@@ -15,7 +15,7 @@ Pod::Spec.new do |s|
   DESC
 
   s.homepage              = "https://www.bytehide.com/products/monitor"
-  s.documentation_url     = "https://docs.bytehide.com/monitor/ios"
+  s.documentation_url     = "https://docs.bytehide.com/platforms/ios/products/monitor"
   s.license               = { :type => "Commercial", :text => "Copyright (c) 2025-2026 ByteHide. All rights reserved." }
   s.author                = { "ByteHide" => "support@bytehide.com" }
 

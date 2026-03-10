@@ -143,7 +143,9 @@ if [ -z "$TOKEN" ]; then
     log_error "  {"
     log_error "    \"token\": \"bh_your_token_here\""
     log_error "  }"
-    exit 1
+    log_error ""
+    log_error "Skipping license validation (build will continue without signature)"
+    exit 0
 fi
 
 # Check if token is still a placeholder (not resolved by Xcode)
