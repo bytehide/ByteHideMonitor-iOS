@@ -104,7 +104,14 @@ def setup_build_phase(project, target)
   phase.shell_script = SIGN_SCRIPT
   phase.output_paths = ['$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/monitor.sig']
 
-  print_success "Added build phase to '#{target.name}'"
+  # Move before Compile Sources (top of build phases)
+  compile_index = target.build_phases.index { |p| p.is_a?(Xcodeproj::Project::Object::PBXSourcesBuildPhase) }
+  if compile_index
+    target.build_phases.delete(phase)
+    target.build_phases.insert(compile_index, phase)
+  end
+
+  print_success "Added build phase to '#{target.name}' (before Compile Sources)"
   :added
 end
 
