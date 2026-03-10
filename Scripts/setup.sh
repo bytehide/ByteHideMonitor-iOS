@@ -59,7 +59,7 @@ if [ -f "$LOCAL_RB" ]; then
 else
     echo -e "${BLUE}Downloading setup script...${NC}"
     REMOTE_URL="https://raw.githubusercontent.com/bytehide/ByteHideMonitor-iOS/main/Scripts/setup-spm.rb"
-    TEMP_RB=$(mktemp /tmp/bytehide-setup.XXXXXX.rb)
+    TEMP_RB="/tmp/bytehide-setup-$$.rb"
     curl -sL "$REMOTE_URL" -o "$TEMP_RB"
 
     if [ ! -s "$TEMP_RB" ]; then
