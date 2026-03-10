@@ -165,13 +165,18 @@ end
 
 # ─── Disable sandbox ────────────────────────────────────────────────────────
 
-def disable_sandbox(target)
-  target.build_configurations.each do |config|
-    current = config.build_settings['USER_SCRIPT_SANDBOXING']
-    next if current == 'NO'
+def disable_sandbox(project, target)
+  # Disable at project level (where Xcode sets the default)
+  project.build_configurations.each do |config|
     config.build_settings['USER_SCRIPT_SANDBOXING'] = 'NO'
   end
-  print_success "Disabled User Script Sandboxing in '#{target.name}'"
+
+  # Also disable at target level (explicit override)
+  target.build_configurations.each do |config|
+    config.build_settings['USER_SCRIPT_SANDBOXING'] = 'NO'
+  end
+
+  print_success "Disabled User Script Sandboxing (project + target)"
 end
 
 # ─── Main ────────────────────────────────────────────────────────────────────
@@ -211,7 +216,7 @@ def main
     print_info "Configuring target '#{target.name}'..."
     setup_config_file(project, target, project_dir)
     setup_build_phase(project, target)
-    disable_sandbox(target)
+    disable_sandbox(project, target)
   end
 
   # Save
@@ -233,7 +238,7 @@ def main
   puts ""
   puts "  Next: just build your project!"
   puts ""
-  puts "  Get your token at: #{BLUE}https://monitor.bytehide.com#{NC}"
+  puts "  Get your token at: #{BLUE}https://cloud.bytehide.com/product/monitor/#{NC}"
   puts ""
 end
 

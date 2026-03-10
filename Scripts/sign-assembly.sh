@@ -261,7 +261,7 @@ if [ "$HTTP_CODE" != "200" ]; then
             ;;
         401|403)
             log_error "Invalid or expired project key"
-            log_error "Get your project key at: https://monitor.bytehide.com"
+            log_error "Get your project key at: https://cloud.bytehide.com/product/monitor/"
             exit 1
             ;;
         429)
