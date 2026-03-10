@@ -2,13 +2,13 @@
 
 All notable changes to ByteHide Monitor iOS will be documented in this file.
 
-## [1.0.3] - 2026-03-10
+## [1.0.4] - 2026-03-10
 
 ### Added
 - Initial iOS release
 - CocoaPods and Swift Package Manager support
 - Auto-initialization via +load() (zero code required)
-- Build-time license validation with JWT signatures
+- Build-time assembly signing with JWT signatures
 - Runtime protection modules:
   - Debugger detection (native + P_TRACED)
   - Jailbreak detection (files, URLs, sandbox, symlinks)

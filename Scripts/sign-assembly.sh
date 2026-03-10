@@ -1,17 +1,13 @@
 #!/bin/bash
 
-# ByteHide Monitor - License Validation Script
+# ByteHide Monitor - Assembly Signing
 #
-# This script runs during Xcode build and:
-# 1. Reads API token from Info.plist (resolved by Xcode from $(BYTEHIDE_TOKEN))
-# 2. Calls ByteHide API to validate license
-# 3. Receives JWT signature from API
-# 4. Saves signature to app bundle (monitor.sig)
-# 5. Runtime validates signature offline
+# Signs the application binary to enable runtime integrity verification.
+# This build phase generates a cryptographic signature that ByteHide Monitor
+# uses to detect tampering, reverse engineering, and unauthorized modifications.
 #
-# Similar to:
-# - .NET: MSBuild targets that call TokenDiscoveryService
-# - Java: Gradle tasks that validate project.token
+# The signature is verified at runtime to ensure the app hasn't been modified
+# after compilation. Without this signature, protection modules cannot start.
 
 set -e
 set -o pipefail
@@ -20,7 +16,7 @@ set -o pipefail
 # Configuration
 #──────────────────────────────────────────────────────────────────────────────
 
-# Match .NET implementation: https://monitor.microservice.bytehide.com/api/license/validate/{token}
+# ByteHide signing endpoint
 API_ENDPOINT="${BYTEHIDE_API_ENDPOINT:-https://monitor.microservice.bytehide.com/api}"
 TIMEOUT=5
 
@@ -77,7 +73,7 @@ INFO_PLIST="${APP_BUNDLE}/Info.plist"
 SIGNATURE_FILE="${APP_BUNDLE}/monitor.sig"
 
 #──────────────────────────────────────────────────────────────────────────────
-# Step 1: Read token (Priority: 1. ENV, 2. Info.plist, 3. monitor-config.json)
+# Step 1: Read project key (Priority: 1. ENV, 2. Info.plist, 3. monitor-config.json)
 #──────────────────────────────────────────────────────────────────────────────
 
 TOKEN=""
@@ -104,15 +100,16 @@ if [ -z "$TOKEN" ]; then
 
     for CONFIG_PATH in "${CONFIG_PATHS[@]}"; do
         if [ -f "$CONFIG_PATH" ]; then
-            # Extract token from JSON (try multiple field names for compatibility)
-            TOKEN=$(sed -n 's/.*"projectToken"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG_PATH" | head -1)
+            # Extract token from JSON - "apiToken" is the standard field name
+            TOKEN=$(sed -n 's/.*"apiToken"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG_PATH" | head -1)
 
+            # Fallback: also accept "token" and "projectToken" for compatibility
             if [ -z "$TOKEN" ]; then
                 TOKEN=$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG_PATH" | head -1)
             fi
 
             if [ -z "$TOKEN" ]; then
-                TOKEN=$(sed -n 's/.*"apiToken"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG_PATH" | head -1)
+                TOKEN=$(sed -n 's/.*"projectToken"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG_PATH" | head -1)
             fi
 
             if [ -n "$TOKEN" ]; then
@@ -124,27 +121,28 @@ fi
 
 # Validate token was found
 if [ -z "$TOKEN" ]; then
-    log_error "No API token found"
+    log_error "No project key found for assembly signing"
     log_error ""
-    log_error "Please provide token via one of these methods:"
+    log_error "ByteHide Monitor requires a project key to sign the assembly."
+    log_error "Without signing, runtime protection cannot verify binary integrity."
     log_error ""
-    log_error "Option 1 (Recommended): Environment variable"
-    log_error "  Xcode: Product → Scheme → Edit Scheme → Run/Archive → Environment Variables"
-    log_error "  Add: BYTEHIDE_TOKEN = bh_your_token_here"
+    log_error "Set your project key via one of these methods:"
     log_error ""
-    log_error "Option 2: Info.plist"
-    log_error "  <key>ByteHideMonitor</key>"
-    log_error "  <dict>"
-    log_error "      <key>APIToken</key>"
-    log_error "      <string>bh_your_token_here</string>"
-    log_error "  </dict>"
+    log_error "  1. BYTEHIDE_TOKEN Build Setting (Recommended):"
+    log_error "     Target → Build Settings → + → Add User-Defined Setting"
+    log_error "     BYTEHIDE_TOKEN = bh_your_project_key"
     log_error ""
-    log_error "Option 3: monitor-config.json (in project root)"
-    log_error "  {"
-    log_error "    \"token\": \"bh_your_token_here\""
-    log_error "  }"
+    log_error "  2. monitor-config.json (in project root):"
+    log_error "     { \"apiToken\": \"bh_your_project_key\" }"
     log_error ""
-    log_error "Skipping license validation (build will continue without signature)"
+    log_error "  3. Info.plist:"
+    log_error "     <key>ByteHideMonitor</key>"
+    log_error "     <dict>"
+    log_error "         <key>APIToken</key>"
+    log_error "         <string>bh_your_project_key</string>"
+    log_error "     </dict>"
+    log_error ""
+    log_error "Skipping assembly signing (protection will run in unsigned mode)"
     exit 0
 fi
 
@@ -152,12 +150,13 @@ fi
 if [[ "$TOKEN" == *'$('* ]] || [[ "$TOKEN" == *'${'* ]]; then
     log_error "Token not resolved: $TOKEN"
     log_error ""
-    log_error "Set BYTEHIDE_TOKEN environment variable:"
-    log_error "  Product → Scheme → Edit Scheme → Run → Environment Variables"
-    log_error "  Add: BYTEHIDE_TOKEN = your_token_here"
+    log_error "The token contains an unresolved variable reference."
+    log_error "Set BYTEHIDE_TOKEN as a User-Defined Build Setting:"
+    log_error "  Target → Build Settings → + → Add User-Defined Setting"
+    log_error "  BYTEHIDE_TOKEN = bh_your_project_key"
     log_error ""
-    log_error "Or use hardcoded token in Info.plist (not recommended):"
-    log_error "  <string>bh_your_token_here</string>"
+    log_error "Or use the actual token value directly in monitor-config.json:"
+    log_error "  { \"apiToken\": \"bh_your_project_key\" }"
     exit 1
 fi
 
@@ -212,15 +211,13 @@ fi
 
 # Check HTTP status
 if [ "$HTTP_CODE" != "200" ]; then
-    log_error "API request failed with HTTP $HTTP_CODE"
-    log_error "Response: $RESPONSE_BODY"
+    log_error "Signing request failed (HTTP $HTTP_CODE)"
 
     # Check for common errors
     case "$HTTP_CODE" in
         000)
-            log_warning "Network error - cannot reach $VALIDATE_URL"
-            log_warning "This is expected during development if API is not deployed yet"
-            log_warning "Generating mock JWT for offline testing..."
+            log_warning "Network error - signing server unreachable"
+            log_warning "Generating offline signature for development..."
 
             # Generate mock JWT for offline testing
             # Header: {"alg":"HS256","typ":"JWT"}
@@ -231,21 +228,20 @@ if [ "$HTTP_CODE" != "200" ]; then
             SIGNATURE="mock_signature_for_development_only"
             JWT="${HEADER}.${PAYLOAD}.${SIGNATURE}"
 
-            log_warning "Mock JWT generated (not cryptographically valid)"
-            log_warning "This is only for build testing - real API will provide valid JWT"
+            log_warning "Offline signature generated (limited protection)"
             ;;
         401|403)
-            log_error "Invalid or expired API token"
-            log_error "Get a valid token at: https://monitor.bytehide.com"
+            log_error "Invalid or expired project key"
+            log_error "Get your project key at: https://monitor.bytehide.com"
             exit 1
             ;;
         429)
-            log_error "Rate limit exceeded - too many validation requests"
+            log_error "Rate limit exceeded - too many signing requests"
             log_error "Wait a few minutes and try again"
             exit 1
             ;;
         500|502|503)
-            log_error "ByteHide API is temporarily unavailable"
+            log_error "ByteHide signing service temporarily unavailable"
             log_error "Try again in a few minutes"
             exit 1
             ;;
@@ -269,7 +265,7 @@ if [ "$HTTP_CODE" = "200" ]; then
     fi
 
     if [ -z "$JWT" ]; then
-        log_error "No JWT/certificate in API response"
+        log_error "No signature received from signing service"
         exit 1
     fi
 fi
@@ -279,18 +275,18 @@ fi
 # Validate JWT format
 JWT_PARTS=$(echo "$JWT" | tr '.' '\n' | wc -l)
 if [ "$JWT_PARTS" -ne 3 ]; then
-    log_error "Invalid JWT format (expected 3 parts, got $JWT_PARTS)"
+    log_error "Invalid signature format"
     exit 1
 fi
 
 #──────────────────────────────────────────────────────────────────────────────
-# Step 5: Save signature to app bundle
+# Step 5: Embed signature in app bundle
 #──────────────────────────────────────────────────────────────────────────────
 
 echo "$JWT" > "$SIGNATURE_FILE"
 
 if [ ! -f "$SIGNATURE_FILE" ]; then
-    log_error "Failed to write signature file"
+    log_error "Failed to embed signature in app bundle"
     exit 1
 fi
 
