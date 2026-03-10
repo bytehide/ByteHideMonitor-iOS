@@ -8,6 +8,8 @@
 #
 # The signature is verified at runtime to ensure the app hasn't been modified
 # after compilation. Without this signature, protection modules cannot start.
+#
+# Works in both CocoaPods context (SRCROOT=Pods/) and SPM/manual context.
 
 set -e
 set -o pipefail
@@ -16,34 +18,15 @@ set -o pipefail
 # Configuration
 #──────────────────────────────────────────────────────────────────────────────
 
-# ByteHide signing endpoint
 API_ENDPOINT="${BYTEHIDE_API_ENDPOINT:-https://monitor.microservice.bytehide.com/api}"
 TIMEOUT=5
-
-#──────────────────────────────────────────────────────────────────────────────
-# Colors for output
-#──────────────────────────────────────────────────────────────────────────────
-
-if [ -t 1 ]; then
-    RED='\033[0;31m'
-    GREEN='\033[0;32m'
-    YELLOW='\033[1;33m'
-    BLUE='\033[0;34m'
-    NC='\033[0m'
-else
-    RED=''
-    GREEN=''
-    YELLOW=''
-    BLUE=''
-    NC=''
-fi
 
 #──────────────────────────────────────────────────────────────────────────────
 # Helper functions
 #──────────────────────────────────────────────────────────────────────────────
 
 log_info() {
-    : # Silent in release builds
+    : # Silent in normal builds
 }
 
 log_success() {
@@ -59,51 +42,83 @@ log_error() {
 }
 
 #──────────────────────────────────────────────────────────────────────────────
-# Validate environment
+# Detect execution context (CocoaPods vs SPM/manual)
 #──────────────────────────────────────────────────────────────────────────────
 
-if [ -z "$BUILT_PRODUCTS_DIR" ] || [ -z "$PRODUCT_NAME" ]; then
+if [ -z "$BUILT_PRODUCTS_DIR" ]; then
     log_error "Required Xcode environment variables not set"
-    log_error "This script must run as Xcode build phase"
+    log_error "This script must run as an Xcode build phase"
     exit 1
 fi
 
-APP_BUNDLE="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app"
+# In CocoaPods, SRCROOT/PRODUCT_NAME point to the Pods project, not the app.
+# We need to find the actual app project root and app bundle.
+if [ -n "$PODS_ROOT" ]; then
+    # CocoaPods context: SRCROOT points to Pods/, not the app project.
+    # Resolve the real path to the app project (parent of Pods/).
+    APP_PROJECT_ROOT=$(cd "$PODS_ROOT" && cd .. && pwd)
+
+    # Find the actual .app bundle in build products
+    APP_BUNDLE=$(find "$BUILT_PRODUCTS_DIR" -maxdepth 1 -name "*.app" -type d 2>/dev/null | head -1)
+
+    if [ -z "$APP_BUNDLE" ]; then
+        # .app not created yet — create directory so we can write monitor.sig
+        APP_NAME=$(basename "$APP_PROJECT_ROOT")
+        APP_BUNDLE="${BUILT_PRODUCTS_DIR}/${APP_NAME}.app"
+        mkdir -p "$APP_BUNDLE"
+    fi
+else
+    # SPM or manual build phase: standard Xcode context
+    APP_PROJECT_ROOT="${SRCROOT}"
+    APP_BUNDLE="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app"
+fi
+
 INFO_PLIST="${APP_BUNDLE}/Info.plist"
 SIGNATURE_FILE="${APP_BUNDLE}/monitor.sig"
 
 #──────────────────────────────────────────────────────────────────────────────
-# Step 1: Read project key (Priority: 1. ENV, 2. Info.plist, 3. monitor-config.json)
+# Step 1: Find project key
+#   Priority: 1. BYTEHIDE_TOKEN env var
+#             2. monitor-config.json (in app project root)
+#             3. Info.plist (ByteHideMonitor > APIToken)
 #──────────────────────────────────────────────────────────────────────────────
 
 TOKEN=""
 
-# Priority 1: BYTEHIDE_TOKEN environment variable (easiest for CI/CD)
+# Priority 1: BYTEHIDE_TOKEN environment variable
+# In CocoaPods context, User-Defined Build Settings from the app target are
+# NOT visible. BYTEHIDE_TOKEN must be a real env var (CI/CD, shell profile).
 if [ -n "$BYTEHIDE_TOKEN" ]; then
-    log_info "Using API token from BYTEHIDE_TOKEN environment variable"
     TOKEN="$BYTEHIDE_TOKEN"
 fi
 
-# Priority 2: Info.plist (standard iOS configuration)
-if [ -z "$TOKEN" ] && [ -f "$INFO_PLIST" ]; then
-    TOKEN=$(/usr/libexec/PlistBuddy -c "Print :ByteHideMonitor:APIToken" "$INFO_PLIST" 2>/dev/null || echo "")
-fi
-
-# Priority 3: monitor-config.json (project configuration file)
+# Priority 2: monitor-config.json
 if [ -z "$TOKEN" ]; then
-    # Look for monitor-config.json in common locations
+    # Derive the app target name for subdirectory search
+    if [ -n "$PODS_ROOT" ]; then
+        APP_TARGET_NAME=$(basename "$APP_PROJECT_ROOT")
+    else
+        APP_TARGET_NAME="$PRODUCT_NAME"
+    fi
+
     CONFIG_PATHS=(
-        "${SRCROOT}/monitor-config.json"
-        "${SRCROOT}/${PRODUCT_NAME}/monitor-config.json"
-        "${PROJECT_DIR}/monitor-config.json"
+        "${APP_PROJECT_ROOT}/monitor-config.json"
+        "${APP_PROJECT_ROOT}/${APP_TARGET_NAME}/monitor-config.json"
     )
+
+    # Also check SRCROOT/PROJECT_DIR for SPM/manual context
+    if [ -z "$PODS_ROOT" ]; then
+        CONFIG_PATHS+=(
+            "${PROJECT_DIR}/monitor-config.json"
+        )
+    fi
 
     for CONFIG_PATH in "${CONFIG_PATHS[@]}"; do
         if [ -f "$CONFIG_PATH" ]; then
-            # Extract token from JSON - "apiToken" is the standard field name
+            # "apiToken" is the standard field name (matches SDK runtime)
             TOKEN=$(sed -n 's/.*"apiToken"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG_PATH" | head -1)
 
-            # Fallback: also accept "token" and "projectToken" for compatibility
+            # Fallback: also accept "token" and "projectToken"
             if [ -z "$TOKEN" ]; then
                 TOKEN=$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG_PATH" | head -1)
             fi
@@ -119,8 +134,35 @@ if [ -z "$TOKEN" ]; then
     done
 fi
 
+# Priority 3: Info.plist (ByteHideMonitor > APIToken)
+if [ -z "$TOKEN" ] && [ -f "$INFO_PLIST" ]; then
+    TOKEN=$(/usr/libexec/PlistBuddy -c "Print :ByteHideMonitor:APIToken" "$INFO_PLIST" 2>/dev/null || echo "")
+fi
+
+# Also check source Info.plist (not yet copied to .app bundle)
+if [ -z "$TOKEN" ] && [ -n "$APP_PROJECT_ROOT" ]; then
+    for _plist in "${APP_PROJECT_ROOT}"/*/Info.plist "${APP_PROJECT_ROOT}"/Info.plist; do
+        if [ -f "$_plist" ]; then
+            TOKEN=$(/usr/libexec/PlistBuddy -c "Print :ByteHideMonitor:APIToken" "$_plist" 2>/dev/null || echo "")
+            if [ -n "$TOKEN" ]; then
+                break
+            fi
+        fi
+    done
+fi
+
 # Validate token was found
 if [ -z "$TOKEN" ]; then
+    log_error "── Diagnostic ──────────────────────────────────────"
+    log_error "APP_PROJECT_ROOT: ${APP_PROJECT_ROOT:-(empty)}"
+    log_error "APP_BUNDLE: ${APP_BUNDLE:-(empty)}"
+    log_error "PODS_ROOT: ${PODS_ROOT:-(empty)}"
+    log_error "BYTEHIDE_TOKEN: ${BYTEHIDE_TOKEN:-(empty)}"
+    for _p in "${CONFIG_PATHS[@]}"; do
+        if [ -f "$_p" ]; then log_error "  FOUND: $_p"; else log_error "  NOT FOUND: $_p"; fi
+    done
+    log_error "───────────────────────────────────────────────────"
+    log_error ""
     log_error "No project key found for assembly signing"
     log_error ""
     log_error "ByteHide Monitor requires a project key to sign the assembly."
@@ -128,51 +170,54 @@ if [ -z "$TOKEN" ]; then
     log_error ""
     log_error "Set your project key via one of these methods:"
     log_error ""
-    log_error "  1. BYTEHIDE_TOKEN Build Setting (Recommended):"
-    log_error "     Target → Build Settings → + → Add User-Defined Setting"
-    log_error "     BYTEHIDE_TOKEN = bh_your_project_key"
-    log_error ""
-    log_error "  2. monitor-config.json (in project root):"
+    log_error "  1. monitor-config.json in project root (Recommended):"
     log_error "     { \"apiToken\": \"bh_your_project_key\" }"
     log_error ""
-    log_error "  3. Info.plist:"
+    log_error "  2. Info.plist:"
     log_error "     <key>ByteHideMonitor</key>"
     log_error "     <dict>"
     log_error "         <key>APIToken</key>"
     log_error "         <string>bh_your_project_key</string>"
     log_error "     </dict>"
     log_error ""
+    log_error "  3. BYTEHIDE_TOKEN environment variable (CI/CD):"
+    log_error "     export BYTEHIDE_TOKEN=bh_your_project_key"
+    log_error ""
     log_error "Skipping assembly signing (protection will run in unsigned mode)"
     exit 0
 fi
 
-# Check if token is still a placeholder (not resolved by Xcode)
-if [[ "$TOKEN" == *'$('* ]] || [[ "$TOKEN" == *'${'* ]]; then
-    log_error "Token not resolved: $TOKEN"
-    log_error ""
-    log_error "The token contains an unresolved variable reference."
-    log_error "Set BYTEHIDE_TOKEN as a User-Defined Build Setting:"
-    log_error "  Target → Build Settings → + → Add User-Defined Setting"
-    log_error "  BYTEHIDE_TOKEN = bh_your_project_key"
-    log_error ""
-    log_error "Or use the actual token value directly in monitor-config.json:"
-    log_error "  { \"apiToken\": \"bh_your_project_key\" }"
-    exit 1
+# Resolve environment variable references in token value (e.g., "${BYTEHIDE_TOKEN}")
+if [[ "$TOKEN" == *'${'* ]]; then
+    # Extract variable name and try to resolve
+    VAR_NAME=$(echo "$TOKEN" | sed -n 's/.*\${\([^}]*\)}.*/\1/p')
+    if [ -n "$VAR_NAME" ]; then
+        RESOLVED=$(eval echo "\${$VAR_NAME:-}")
+        if [ -n "$RESOLVED" ]; then
+            TOKEN="$RESOLVED"
+        else
+            log_error "Token contains unresolved variable: \${$VAR_NAME}"
+            log_error ""
+            log_error "Use the actual token value in monitor-config.json:"
+            log_error "  { \"apiToken\": \"bh_your_project_key\" }"
+            log_error ""
+            log_error "Or set the environment variable for CI/CD:"
+            log_error "  export $VAR_NAME=bh_your_project_key"
+            exit 0
+        fi
+    fi
 fi
 
-# Validate token format (basic check)
+# Validate token format
 if [[ ! "$TOKEN" =~ ^bh_ ]]; then
     log_warning "Token format unusual (expected 'bh_...'): ${TOKEN:0:10}..."
     log_warning "Proceeding anyway..."
 fi
 
-: # Token found, silent
-
 #──────────────────────────────────────────────────────────────────────────────
-# Step 2: Gather device information
+# Step 2: Gather build information
 #──────────────────────────────────────────────────────────────────────────────
 
-# Gather build information (silent)
 BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$INFO_PLIST" 2>/dev/null || echo "unknown")
 BUNDLE_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$INFO_PLIST" 2>/dev/null || echo "1.0")
 BUILD_NUMBER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$INFO_PLIST" 2>/dev/null || echo "1")
@@ -181,10 +226,9 @@ SDK_VERSION="${SDK_VERSION:-unknown}"
 MACHINE_ID=$(ioreg -rd1 -c IOPlatformExpertDevice | awk -F'"' '/IOPlatformUUID/{print $4}' || echo "unknown")
 
 #──────────────────────────────────────────────────────────────────────────────
-# Step 3: Call API to validate license
+# Step 3: Request signature from signing service
 #──────────────────────────────────────────────────────────────────────────────
 
-# Build URL and call API (silent)
 VALIDATE_URL="${API_ENDPOINT}/license/validate/${TOKEN}"
 JSON_PAYLOAD="{\"token\":\"$TOKEN\",\"integrity\":null}"
 
@@ -192,39 +236,28 @@ set +e
 HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" \
     -X POST "$VALIDATE_URL" \
     -H "Content-Type: application/json" \
-    -H "User-Agent: ByteHideMonitor-iOS/1.0.0" \
+    -H "User-Agent: ByteHideMonitor-iOS/1.0.5" \
     --max-time $TIMEOUT \
     --connect-timeout $TIMEOUT \
     --data "$JSON_PAYLOAD" 2>&1)
 CURL_EXIT_CODE=$?
 set -e
 
-# Extract status code and body
 HTTP_CODE=$(echo "$HTTP_RESPONSE" | tail -n 1)
 RESPONSE_BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
 
-# If curl itself failed (DNS, timeout, etc.), HTTP_CODE will not be a number
 if ! [[ "$HTTP_CODE" =~ ^[0-9]+$ ]]; then
     HTTP_CODE="000"
-    log_info "Curl failed - treating as network error (HTTP 000)"
 fi
 
-# Check HTTP status
 if [ "$HTTP_CODE" != "200" ]; then
-    log_error "Signing request failed (HTTP $HTTP_CODE)"
-
-    # Check for common errors
     case "$HTTP_CODE" in
         000)
             log_warning "Network error - signing server unreachable"
             log_warning "Generating offline signature for development..."
 
-            # Generate mock JWT for offline testing
-            # Header: {"alg":"HS256","typ":"JWT"}
             HEADER="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
-            # Payload: {"sub":"test","exp":9999999999,"iat":1735329600}
             PAYLOAD="eyJzdWIiOiJ0ZXN0IiwiZXhwIjo5OTk5OTk5OTk5LCJpYXQiOjE3MzUzMjk2MDB9"
-            # Signature (mock - not cryptographically valid)
             SIGNATURE="mock_signature_for_development_only"
             JWT="${HEADER}.${PAYLOAD}.${SIGNATURE}"
 
@@ -246,13 +279,13 @@ if [ "$HTTP_CODE" != "200" ]; then
             exit 1
             ;;
         *)
-            log_error "Unknown error occurred"
+            log_error "Signing request failed (HTTP $HTTP_CODE)"
             exit 1
             ;;
     esac
 fi
 
-# Extract JWT from response (silent)
+# Extract JWT from response
 if [ "$HTTP_CODE" = "200" ]; then
     JWT=$(echo "$RESPONSE_BODY" | sed -n 's/.*"data"[[:space:]]*:[[:space:]]*{[^}]*"jwt"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 
@@ -270,8 +303,6 @@ if [ "$HTTP_CODE" = "200" ]; then
     fi
 fi
 
-# At this point, JWT is set either from API (HTTP 200) or mock (HTTP 000)
-
 # Validate JWT format
 JWT_PARTS=$(echo "$JWT" | tr '.' '\n' | wc -l)
 if [ "$JWT_PARTS" -ne 3 ]; then
@@ -280,9 +311,10 @@ if [ "$JWT_PARTS" -ne 3 ]; then
 fi
 
 #──────────────────────────────────────────────────────────────────────────────
-# Step 5: Embed signature in app bundle
+# Step 4: Embed signature in app bundle
 #──────────────────────────────────────────────────────────────────────────────
 
+mkdir -p "$(dirname "$SIGNATURE_FILE")"
 echo "$JWT" > "$SIGNATURE_FILE"
 
 if [ ! -f "$SIGNATURE_FILE" ]; then
@@ -290,12 +322,11 @@ if [ ! -f "$SIGNATURE_FILE" ]; then
     exit 1
 fi
 
-# Verify signature file
 SAVED_JWT=$(cat "$SIGNATURE_FILE")
 if [ "$SAVED_JWT" != "$JWT" ]; then
     log_error "Signature verification failed"
     exit 1
 fi
 
-log_success "Assembly signature verified"
+log_success "Assembly signed successfully"
 exit 0

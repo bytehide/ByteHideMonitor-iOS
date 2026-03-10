@@ -9,7 +9,7 @@ ByteHide Monitor supports both **CocoaPods** and **Swift Package Manager**.
 ### CocoaPods (Recommended - Zero Config)
 
 ```ruby
-pod 'ByteHideMonitor', '~> 1.0.0'
+pod 'ByteHideMonitor', '~> 1.0'
 ```
 
 Then run:
