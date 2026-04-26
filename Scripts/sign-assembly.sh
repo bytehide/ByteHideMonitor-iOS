@@ -81,11 +81,18 @@ SIGNATURE_FILE="${APP_BUNDLE}/monitor.sig"
 #──────────────────────────────────────────────────────────────────────────────
 # Step 1: Find project key
 #   Priority: 1. BYTEHIDE_TOKEN env var
-#             2. monitor-config.json (in app project root)
-#             3. Info.plist (ByteHideMonitor > APIToken)
+#             2. monitor-config.{scheme}.{configuration}.json (most specific)
+#             3. monitor-config.{scheme}.json
+#             4. monitor-config.{configuration}.json
+#             5. monitor-config.json (base/fallback)
+#             6. Info.plist (ByteHideMonitor > APIToken)
 #──────────────────────────────────────────────────────────────────────────────
 
 TOKEN=""
+
+# Detect scheme and configuration from Xcode environment
+SCHEME_LOWER=$(echo "${SCHEME_NAME:-}" | tr '[:upper:]' '[:lower:]')
+CONFIG_LOWER=$(echo "${CONFIGURATION:-}" | tr '[:upper:]' '[:lower:]')
 
 # Priority 1: BYTEHIDE_TOKEN environment variable
 # In CocoaPods context, User-Defined Build Settings from the app target are
@@ -94,7 +101,7 @@ if [ -n "$BYTEHIDE_TOKEN" ]; then
     TOKEN="$BYTEHIDE_TOKEN"
 fi
 
-# Priority 2: monitor-config.json
+# Priority 2: monitor-config files (environment-specific → base)
 if [ -z "$TOKEN" ]; then
     # In CocoaPods, PRODUCT_NAME is the pod name; derive app name from project root
     if [ -n "$PODS_ROOT" ]; then
@@ -103,31 +110,72 @@ if [ -z "$TOKEN" ]; then
         APP_TARGET_NAME="$PRODUCT_NAME"
     fi
 
-    CONFIG_PATHS=(
-        "${APP_PROJECT_ROOT}/monitor-config.json"
-        "${APP_PROJECT_ROOT}/${APP_TARGET_NAME}/monitor-config.json"
-        "${PROJECT_DIR}/monitor-config.json"
+    # Base directories to search
+    SEARCH_DIRS=(
+        "${APP_PROJECT_ROOT}"
+        "${APP_PROJECT_ROOT}/${APP_TARGET_NAME}"
+        "${PROJECT_DIR}"
     )
 
-    for CONFIG_PATH in "${CONFIG_PATHS[@]}"; do
-        if [ -f "$CONFIG_PATH" ]; then
-            # "apiToken" is the standard field name (matches SDK runtime)
-            TOKEN=$(sed -n 's/.*"apiToken"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG_PATH" | head -1)
+    # Config filenames in priority order (most specific first)
+    CONFIG_NAMES=()
+    if [ -n "$SCHEME_LOWER" ] && [ -n "$CONFIG_LOWER" ]; then
+        CONFIG_NAMES+=("monitor-config.${SCHEME_LOWER}.${CONFIG_LOWER}.json")
+    fi
+    if [ -n "$SCHEME_LOWER" ]; then
+        CONFIG_NAMES+=("monitor-config.${SCHEME_LOWER}.json")
+    fi
+    if [ -n "$CONFIG_LOWER" ]; then
+        CONFIG_NAMES+=("monitor-config.${CONFIG_LOWER}.json")
+    fi
+    CONFIG_NAMES+=("monitor-config.json")
 
-            # Fallback: also accept "token" and "projectToken"
-            if [ -z "$TOKEN" ]; then
-                TOKEN=$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG_PATH" | head -1)
+    # Search for the most specific config file
+    SELECTED_CONFIG=""
+    for CONFIG_NAME in "${CONFIG_NAMES[@]}"; do
+        for SEARCH_DIR in "${SEARCH_DIRS[@]}"; do
+            CONFIG_PATH="${SEARCH_DIR}/${CONFIG_NAME}"
+            if [ -f "$CONFIG_PATH" ]; then
+                SELECTED_CONFIG="$CONFIG_PATH"
+                break 2
             fi
+        done
+    done
 
-            if [ -z "$TOKEN" ]; then
-                TOKEN=$(sed -n 's/.*"projectToken"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG_PATH" | head -1)
-            fi
-
-            if [ -n "$TOKEN" ]; then
-                break
-            fi
+    # Also find base config for merge (if selected is not the base)
+    BASE_CONFIG=""
+    for SEARCH_DIR in "${SEARCH_DIRS[@]}"; do
+        if [ -f "${SEARCH_DIR}/monitor-config.json" ]; then
+            BASE_CONFIG="${SEARCH_DIR}/monitor-config.json"
+            break
         fi
     done
+
+    # Extract token: try selected config first, then base
+    extract_token_from_file() {
+        local FILE="$1"
+        local T=""
+        T=$(sed -n 's/.*"apiToken"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$FILE" | head -1)
+        if [ -z "$T" ]; then
+            T=$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$FILE" | head -1)
+        fi
+        if [ -z "$T" ]; then
+            T=$(sed -n 's/.*"projectToken"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$FILE" | head -1)
+        fi
+        echo "$T"
+    }
+
+    if [ -n "$SELECTED_CONFIG" ]; then
+        TOKEN=$(extract_token_from_file "$SELECTED_CONFIG")
+        if [ -n "$TOKEN" ]; then
+            log_info "Using config: $(basename "$SELECTED_CONFIG")"
+        fi
+    fi
+
+    # Fallback to base config if env-specific didn't have a token
+    if [ -z "$TOKEN" ] && [ -n "$BASE_CONFIG" ] && [ "$SELECTED_CONFIG" != "$BASE_CONFIG" ]; then
+        TOKEN=$(extract_token_from_file "$BASE_CONFIG")
+    fi
 fi
 
 # Priority 3: Info.plist (ByteHideMonitor > APIToken)
@@ -322,6 +370,28 @@ SAVED_JWT=$(cat "$SIGNATURE_FILE")
 if [ "$SAVED_JWT" != "$JWT" ]; then
     log_error "Signature verification failed"
     exit 1
+fi
+
+#──────────────────────────────────────────────────────────────────────────────
+# Step 5: Inject scheme and configuration into Info.plist for runtime detection
+#──────────────────────────────────────────────────────────────────────────────
+
+if [ -f "$INFO_PLIST" ]; then
+    # Ensure ByteHideMonitor dictionary exists
+    /usr/libexec/PlistBuddy -c "Print :ByteHideMonitor" "$INFO_PLIST" 2>/dev/null || \
+        /usr/libexec/PlistBuddy -c "Add :ByteHideMonitor dict" "$INFO_PLIST" 2>/dev/null
+
+    # Inject Scheme name
+    if [ -n "$SCHEME_NAME" ]; then
+        /usr/libexec/PlistBuddy -c "Delete :ByteHideMonitor:Scheme" "$INFO_PLIST" 2>/dev/null
+        /usr/libexec/PlistBuddy -c "Add :ByteHideMonitor:Scheme string $SCHEME_NAME" "$INFO_PLIST" 2>/dev/null
+    fi
+
+    # Inject Build Configuration
+    if [ -n "$CONFIGURATION" ]; then
+        /usr/libexec/PlistBuddy -c "Delete :ByteHideMonitor:Configuration" "$INFO_PLIST" 2>/dev/null
+        /usr/libexec/PlistBuddy -c "Add :ByteHideMonitor:Configuration string $CONFIGURATION" "$INFO_PLIST" 2>/dev/null
+    fi
 fi
 
 log_success "Assembly signed successfully"
