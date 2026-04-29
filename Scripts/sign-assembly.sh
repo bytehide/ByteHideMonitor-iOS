@@ -168,7 +168,7 @@ if [ -z "$TOKEN" ]; then
     if [ -n "$SELECTED_CONFIG" ]; then
         TOKEN=$(extract_token_from_file "$SELECTED_CONFIG")
         if [ -n "$TOKEN" ]; then
-            log_info "Using config: $(basename "$SELECTED_CONFIG")"
+            log_success "Config selected: $(basename "$SELECTED_CONFIG")"
         fi
     fi
 
@@ -373,24 +373,28 @@ if [ "$SAVED_JWT" != "$JWT" ]; then
 fi
 
 #──────────────────────────────────────────────────────────────────────────────
-# Step 5: Inject scheme and configuration into Info.plist for runtime detection
+# Step 5: Log resolved environment (for debugging)
 #──────────────────────────────────────────────────────────────────────────────
 
-if [ -f "$INFO_PLIST" ]; then
-    # Ensure ByteHideMonitor dictionary exists
-    /usr/libexec/PlistBuddy -c "Print :ByteHideMonitor" "$INFO_PLIST" 2>/dev/null || \
-        /usr/libexec/PlistBuddy -c "Add :ByteHideMonitor dict" "$INFO_PLIST" 2>/dev/null
+if [ -n "$SCHEME_NAME" ] || [ -n "$CONFIGURATION" ]; then
+    log_success "Environment: scheme=${SCHEME_NAME:-n/a}, configuration=${CONFIGURATION:-n/a}"
+fi
 
-    # Inject Scheme name
-    if [ -n "$SCHEME_NAME" ]; then
-        /usr/libexec/PlistBuddy -c "Delete :ByteHideMonitor:Scheme" "$INFO_PLIST" 2>/dev/null
-        /usr/libexec/PlistBuddy -c "Add :ByteHideMonitor:Scheme string $SCHEME_NAME" "$INFO_PLIST" 2>/dev/null
-    fi
+#──────────────────────────────────────────────────────────────────────────────
+# Step 6: Embed resolved config into app bundle for runtime
+#──────────────────────────────────────────────────────────────────────────────
 
-    # Inject Build Configuration
-    if [ -n "$CONFIGURATION" ]; then
-        /usr/libexec/PlistBuddy -c "Delete :ByteHideMonitor:Configuration" "$INFO_PLIST" 2>/dev/null
-        /usr/libexec/PlistBuddy -c "Add :ByteHideMonitor:Configuration string $CONFIGURATION" "$INFO_PLIST" 2>/dev/null
+# The build script already resolved which config file to use (Step 1).
+# Copy ONLY the selected config into the .app bundle as monitor-config.json
+# so the runtime loader finds it without needing to know about environments.
+
+if [ -n "$APP_BUNDLE" ]; then
+    BUNDLE_CONFIG="${APP_BUNDLE}/monitor-config.json"
+
+    if [ -n "$SELECTED_CONFIG" ] && [ "$SELECTED_CONFIG" != "$BASE_CONFIG" ]; then
+        cp "$SELECTED_CONFIG" "$BUNDLE_CONFIG"
+    elif [ -n "$BASE_CONFIG" ]; then
+        cp "$BASE_CONFIG" "$BUNDLE_CONFIG"
     fi
 fi
 
