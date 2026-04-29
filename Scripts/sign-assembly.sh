@@ -91,7 +91,17 @@ SIGNATURE_FILE="${APP_BUNDLE}/monitor.sig"
 TOKEN=""
 
 # Detect scheme and configuration from Xcode environment
-SCHEME_LOWER=$(echo "${SCHEME_NAME:-}" | tr '[:upper:]' '[:lower:]')
+# $SCHEME_NAME is not a standard Xcode build setting — it's not available in
+# script build phases. In CocoaPods, we derive the app/scheme name from the
+# project directory (which typically matches the scheme name).
+if [ -n "$SCHEME_NAME" ]; then
+    SCHEME_LOWER=$(echo "$SCHEME_NAME" | tr '[:upper:]' '[:lower:]')
+elif [ -n "$PODS_ROOT" ]; then
+    # CocoaPods: derive from project directory name
+    SCHEME_LOWER=$(basename "$(cd "$PODS_ROOT" && cd .. && pwd)" | tr '[:upper:]' '[:lower:]')
+else
+    SCHEME_LOWER=$(echo "${PRODUCT_NAME:-}" | tr '[:upper:]' '[:lower:]')
+fi
 CONFIG_LOWER=$(echo "${CONFIGURATION:-}" | tr '[:upper:]' '[:lower:]')
 
 # Priority 1: BYTEHIDE_TOKEN environment variable
@@ -110,13 +120,6 @@ if [ -z "$TOKEN" ]; then
         APP_TARGET_NAME="$PRODUCT_NAME"
     fi
 
-    # Base directories to search
-    SEARCH_DIRS=(
-        "${APP_PROJECT_ROOT}"
-        "${APP_PROJECT_ROOT}/${APP_TARGET_NAME}"
-        "${PROJECT_DIR}"
-    )
-
     # Config filenames in priority order (most specific first)
     CONFIG_NAMES=()
     if [ -n "$SCHEME_LOWER" ] && [ -n "$CONFIG_LOWER" ]; then
@@ -130,26 +133,31 @@ if [ -z "$TOKEN" ]; then
     fi
     CONFIG_NAMES+=("monitor-config.json")
 
+    # Search recursively from APP_PROJECT_ROOT (max depth 4, excluding Pods/DerivedData)
+    # This handles any project structure (nested folders, monorepos, etc.)
+    find_config() {
+        local FILENAME="$1"
+        find "$APP_PROJECT_ROOT" -maxdepth 4 -name "$FILENAME" \
+            -not -path "*/Pods/*" \
+            -not -path "*/DerivedData/*" \
+            -not -path "*/.git/*" \
+            -print -quit 2>/dev/null
+    }
+
     # Search for the most specific config file
     SELECTED_CONFIG=""
     for CONFIG_NAME in "${CONFIG_NAMES[@]}"; do
-        for SEARCH_DIR in "${SEARCH_DIRS[@]}"; do
-            CONFIG_PATH="${SEARCH_DIR}/${CONFIG_NAME}"
-            if [ -f "$CONFIG_PATH" ]; then
-                SELECTED_CONFIG="$CONFIG_PATH"
-                break 2
-            fi
-        done
+        SELECTED_CONFIG=$(find_config "$CONFIG_NAME")
+        if [ -n "$SELECTED_CONFIG" ]; then
+            break
+        fi
     done
 
     # Also find base config for merge (if selected is not the base)
     BASE_CONFIG=""
-    for SEARCH_DIR in "${SEARCH_DIRS[@]}"; do
-        if [ -f "${SEARCH_DIR}/monitor-config.json" ]; then
-            BASE_CONFIG="${SEARCH_DIR}/monitor-config.json"
-            break
-        fi
-    done
+    if [ -n "$SELECTED_CONFIG" ] && [ "$(basename "$SELECTED_CONFIG")" != "monitor-config.json" ]; then
+        BASE_CONFIG=$(find_config "monitor-config.json")
+    fi
 
     # Extract token: try selected config first, then base
     extract_token_from_file() {
@@ -376,8 +384,8 @@ fi
 # Step 5: Log resolved environment (for debugging)
 #──────────────────────────────────────────────────────────────────────────────
 
-if [ -n "$SCHEME_NAME" ] || [ -n "$CONFIGURATION" ]; then
-    log_success "Environment: scheme=${SCHEME_NAME:-n/a}, configuration=${CONFIGURATION:-n/a}"
+if [ -n "$SCHEME_LOWER" ] || [ -n "$CONFIGURATION" ]; then
+    log_success "Environment: scheme=${SCHEME_LOWER:-n/a}, configuration=${CONFIGURATION:-n/a}"
 fi
 
 #──────────────────────────────────────────────────────────────────────────────
